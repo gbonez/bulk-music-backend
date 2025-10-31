@@ -43,19 +43,23 @@ scope = "playlist-modify-public playlist-modify-private user-library-read"
 
 global_driver = None
 def get_global_driver():
+    from selenium.common.exceptions import WebDriverException
     global global_driver
     if global_driver is None:
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless=new")
-        options.add_argument("--disable-gpu")
+        options = Options()
+        options.headless = True
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")
-
-        service = Service(ChromeDriverManager().install())
-        global_driver = webdriver.Chrome(service=service, options=options)
+        options.add_argument("--disable-gpu")
+        options.add_argument("--remote-debugging-port=9222")
+        options.binary_location = os.environ.get("CHROME_BIN", "/usr/bin/chromium")
+        service = Service(os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver"))
+        try:
+            global_driver = webdriver.Chrome(service=service, options=options)
+        except WebDriverException as e:
+            print(f"[ERROR] Failed to start ChromeDriver: {e}")
+            raise
     return global_driver
-
 
 def close_global_driver():
     global global_driver
