@@ -455,7 +455,7 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
                 # Insert or update artist for this user safely
                 try:
                     cur.execute("""
-                        INSERT INTO user_artists (spotify_user_id, artist_id, name, total_liked)
+                        INSERT INTO user_artists (spotify_user_id, artist_id, artist_name, total_liked)
                         VALUES (%s, %s, %s, 1)
                         ON CONFLICT (spotify_user_id, artist_id) DO UPDATE
                         SET total_liked = user_artists.total_liked + 1,
