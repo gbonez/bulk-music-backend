@@ -419,7 +419,7 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     # Check if user exists
-    cur.execute("SELECT 1 FROM users WHERE spotify_user_id = %s", (spotify_user_id,))
+    cur.execute("SELECT 1 FROM spotify_users WHERE spotify_user_id = %s", (spotify_user_id,))
     user_exists = cur.fetchone() is not None
 
     # Scan limit: all tracks for new user, 200 latest for existing user
