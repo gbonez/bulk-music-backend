@@ -459,7 +459,7 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
                         VALUES (%s, %s, %s, 1)
                         ON CONFLICT (spotify_user_id, artist_id) DO UPDATE
                         SET total_liked = user_artists.total_liked + 1,
-                            name = EXCLUDED.name
+                            artist_name = EXCLUDED.artist_name
                     """, (spotify_user_id, aid, name))
                 except Exception as e:
                     # Rollback just this failed statement and continue
