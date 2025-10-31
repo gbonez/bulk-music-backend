@@ -1,7 +1,7 @@
-selenium==5.10.0
-webdriver-manager==4.9.0
-spotipy==2.27.0
-psycopg2-binary==2.9.9
-requests==2.32.0
-beautifulsoup4==4.12.2
-Flask==2.3.6
+selenium
+webdriver-manager
+spotipy
+psycopg2-binary
+requests
+beautifulsoup4
+Flask
