@@ -596,7 +596,9 @@ def send_playlist_update_sms(songs_added, max_songs, removed_count, playlist_id)
 
 
 # ==== MAIN COMBINED SCRIPT ====
-def run_recommendation_script(access_token, refresh_token, phone_number):
+def run_recommendation_script(access_token, refresh_token, phone_number, playlist_id, spotify_user_id, display_name):
+    ...
+
     """
     Runs the recommendation generation process for a specific user.
     Called from the Flask backend when a user logs in and provides their phone number.
