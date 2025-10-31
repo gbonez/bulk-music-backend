@@ -11,7 +11,7 @@ app.secret_key = os.environ.get("FLASK_SECRET", "dev_secret")
 # Spotify credentials & scope
 SPOTIFY_CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 SPOTIFY_CLIENT_SECRET = os.environ["SPOTIFY_CLIENT_SECRET"]
-SPOTIFY_REDIRECT_URI = os.environ.get["BASE_URL"] + "/spotify_auth"
+SPOTIFY_REDIRECT_URI = os.environ.get("BASE_URL") + "/spotify_auth"
 SCOPE = "playlist-modify-public playlist-modify-private user-library-read"
 
 # ===== Templates =====
