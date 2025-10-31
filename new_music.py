@@ -404,7 +404,7 @@ def validate_track(track, artists_data, existing_artist_ids=None, max_followers=
     return True, ""
 
 
-# ==== UPDATE ARTISTS CACHE ====
+# ==== UPDATE ARTISTS CACHE (SAFE VERSION) ====
 def update_artists_from_likes_db(spotify_user_id, sp_conn):
     """
     Updates the user's liked artists in the user_artists table.
@@ -417,6 +417,9 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
     # Connect to DB
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Enable autocommit mode to prevent transaction abort blocking
+    conn.autocommit = True
 
     # Check if user exists
     cur.execute("SELECT 1 FROM spotify_users WHERE spotify_user_id = %s", (spotify_user_id,))
@@ -449,7 +452,7 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
                 aid = artist["id"]
                 name = artist["name"]
 
-                # Insert or update artist for this user
+                # Insert or update artist for this user safely
                 try:
                     cur.execute("""
                         INSERT INTO user_artists (spotify_user_id, artist_id, name, total_liked)
@@ -458,9 +461,10 @@ def update_artists_from_likes_db(spotify_user_id, sp_conn):
                         SET total_liked = user_artists.total_liked + 1,
                             name = EXCLUDED.name
                     """, (spotify_user_id, aid, name))
-                    conn.commit()
                 except Exception as e:
+                    # Rollback just this failed statement and continue
                     print(f"[WARN] Failed to update artist '{name}' in DB: {e}")
+                    conn.rollback()
                     continue
 
                 # Build in-memory dict
