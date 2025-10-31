@@ -5,3 +5,4 @@ beautifulsoup4
 requests
 gunicorn
 psycopg2-binary
+webdriver-manager>=4.0.0

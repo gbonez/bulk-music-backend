@@ -10,6 +10,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
 from psycopg2.extras import RealDictCursor
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Selenium for scraping
 from selenium import webdriver
@@ -39,23 +40,22 @@ SELFPING_ENDPOINT = "https://www.selfping.com/api/sms"
 scope = "playlist-modify-public playlist-modify-private user-library-read"
 
 # ==== GLOBAL DRIVER FOR SCRAPING ====
+
 global_driver = None
 def get_global_driver():
     global global_driver
     if global_driver is None:
-        chrome_bin = os.environ.get("CHROME_BIN")
-        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
-
         options = webdriver.ChromeOptions()
-        options.binary_location = chrome_bin
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--window-size=1920,1080")
 
-        service = Service(chromedriver_path)
+        service = Service(ChromeDriverManager().install())
         global_driver = webdriver.Chrome(service=service, options=options)
     return global_driver
+
 
 def close_global_driver():
     global global_driver
