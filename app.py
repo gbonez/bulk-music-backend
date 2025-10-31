@@ -92,7 +92,7 @@ def spotify_auth_callback():
         scope=SCOPE
     )
     code = request.args.get("code")
-    token_info = sp_oauth.get_access_token(code, as_dict=False)
+    token_info = sp_oauth.get_access_token(code, as_dict=True)
     session["access_token"] = token_info["access_token"]
     session["refresh_token"] = token_info["refresh_token"]
     return redirect(url_for("setup_page"))
