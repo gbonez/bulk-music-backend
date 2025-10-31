@@ -1,0 +1,6 @@
+Flask
+spotipy
+selenium
+beautifulsoup4
+requests
+gunicorn
