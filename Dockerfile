@@ -1,12 +1,17 @@
+# Use a slim Python image
 FROM python:3.11-slim
 
-# Install dependencies for Chromium + Selenium
+# Install minimal system dependencies for Chromium, psycopg2, and building packages
 RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
     wget \
     curl \
     unzip \
-    chromium \
-    chromium-driver \
+    gcc \
+    g++ \
+    libpq-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for headless Chrome
@@ -18,9 +23,10 @@ WORKDIR /app
 
 # Copy requirements and install
 COPY requirements.txt .
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy your code
+# Copy project code
 COPY . .
 
 # Default command
