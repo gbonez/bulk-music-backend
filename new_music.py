@@ -1,7 +1,7 @@
 import os
-import json
 import random
 import time
+import psycopg2
 from datetime import datetime, timezone, timedelta
 from random import choices
 import requests
@@ -9,6 +9,7 @@ from spotipy import Spotify
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
+from psycopg2.extras import RealDictCursor
 
 # Selenium for scraping
 from selenium import webdriver
@@ -22,7 +23,6 @@ from bs4 import BeautifulSoup
 # ==== CONFIG ====
 ARTISTS_FILE = "artists.json"
 OUTPUT_PLAYLIST_ID = os.environ.get("PLAYLIST_ID")  # Spotify playlist to add tracks
-OUTPUT_FILE = "rolled_tracks.json"
 
 LASTFM_API_KEY = os.environ.get("LASTFM_API_KEY")
 LASTFM_USERNAME = os.environ.get("LASTFM_USERNAME")
@@ -397,6 +397,7 @@ def validate_track(track, artists_data, existing_artist_ids=None, max_followers=
     # 3. Max followers
     if max_followers:
         full_artist = safe_spotify_call(sp.artist, aid)
+        time.sleep(.1)
         if full_artist and full_artist["followers"]["total"] > max_followers:
             return False, f"Artist '{artist['name']}' has {full_artist['followers']['total']} followers, exceeds max {max_followers}"
 
@@ -404,78 +405,82 @@ def validate_track(track, artists_data, existing_artist_ids=None, max_followers=
 
 
 # ==== UPDATE ARTISTS CACHE ====
-def update_artists_from_likes():
-    print("[INFO] Starting to update liked artist cache")
-    
-    if os.path.exists(ARTISTS_FILE):
-        with open(ARTISTS_FILE, "r") as f:
-            artist_cache = json.load(f).get("artists", {})
-    else:
-        artist_cache = {}
+def update_artists_from_likes_db(spotify_user_id, sp_conn):
+    """
+    Updates the user's liked artists in the user_artists table.
+    - New user: scan all liked tracks
+    - Existing user: scan only latest 200 tracks
+    Returns a dictionary of all artists for this user.
+    """
+    print(f"[INFO] Updating liked artists for Spotify user {spotify_user_id}")
 
-    scan_limit = None if len(artist_cache) < 100 else 100
+    # Connect to DB
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Check if user exists
+    cur.execute("SELECT 1 FROM users WHERE spotify_user_id = %s", (spotify_user_id,))
+    user_exists = cur.fetchone() is not None
+
+    # Scan limit: all tracks for new user, 200 latest for existing user
+    limit = 200 if user_exists else None
     offset = 0
-    limit = 50
+    batch_size = 50
     total_processed = 0
-    new_artists = {}
-    all_liked_songs = []
-
-    print(f"[INFO] Existing artist cache contains {len(artist_cache)} artists")
-    batch_number = 1
+    artists_dict = {}
 
     while True:
-        batch_limit = limit
-        if scan_limit:
-            remaining = scan_limit - total_processed
+        current_limit = batch_size
+        if limit:
+            remaining = limit - total_processed
             if remaining <= 0:
-                print(f"[INFO] Reached scan limit of {scan_limit} tracks")
                 break
-            batch_limit = min(batch_limit, remaining)
+            current_limit = min(batch_size, remaining)
 
-        results = safe_spotify_call(sp.current_user_saved_tracks, limit=batch_limit, offset=offset)
-        items = results["items"]
-        if not items:
-            print("[INFO] No more liked tracks returned from Spotify")
+        results = safe_spotify_call(sp_conn.current_user_saved_tracks, limit=current_limit, offset=offset)
+        if not results or "items" not in results:
             break
 
-        new_artists_in_batch = 0
-        existing_artists_in_batch = 0
-
-        for item in items:
+        for item in results["items"]:
             track = item["track"]
             added_at = datetime.strptime(item["added_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            all_liked_songs.append({"track_id": track["id"], "artists": track["artists"], "added_at": added_at})
 
             for artist in track["artists"]:
                 aid = artist["id"]
-            if aid not in artist_cache:
-                artist_cache[aid] = {"name": artist["name"], "total_liked": 1}
-                new_artists[aid] = {"name": artist["name"], "total_liked": 1}
-            else:
-                artist_cache[aid]["total_liked"] += 1
+                name = artist["name"]
 
+                # Insert or update artist for this user
+                try:
+                    cur.execute("""
+                        INSERT INTO user_artists (spotify_user_id, artist_id, name, total_liked)
+                        VALUES (%s, %s, %s, 1)
+                        ON CONFLICT (spotify_user_id, artist_id) DO UPDATE
+                        SET total_liked = user_artists.total_liked + 1,
+                            name = EXCLUDED.name
+                    """, (spotify_user_id, aid, name))
+                    conn.commit()
+                except Exception as e:
+                    print(f"[WARN] Failed to update artist '{name}' in DB: {e}")
+                    continue
+
+                # Build in-memory dict
+                if aid not in artists_dict:
+                    artists_dict[aid] = {"name": name, "total_liked": 1}
+                else:
+                    artists_dict[aid]["total_liked"] += 1
 
             total_processed += 1
 
-        print(f"[BATCH {batch_number}] Processed {len(items)} tracks | "
-              f"New artists: {new_artists_in_batch} | "
-              f"Existing artists updated: {existing_artists_in_batch} | "
-              f"Total tracks processed so far: {total_processed}")
-        
-        batch_number += 1
-        offset += limit
+        offset += batch_size
 
-        if scan_limit and total_processed >= scan_limit:
-            print(f"[INFO] Reached the scan limit of {scan_limit} tracks after batch {batch_number-1}")
+        # Break if fewer items than batch were returned
+        if len(results["items"]) < batch_size:
             break
 
-    with open(ARTISTS_FILE, "w") as f:
-        json.dump({"artists": artist_cache}, f, indent=2)
-
-    print(f"[INFO] Finished updating liked artist cache: {len(artist_cache)} total artists cached, "
-          f"{len(new_artists)} new artists added in this run")
-    
-    return new_artists, all_liked_songs
+    cur.close()
+    conn.close()
+    print(f"[INFO] Finished updating liked artists for user {spotify_user_id}: {total_processed} tracks processed")
+    return artists_dict
 
 # ==== CALCULATE LOTTERY WEIGHTS ====
 def calculate_weights(all_artists, artist_play_map):
@@ -560,7 +565,7 @@ def send_playlist_update_sms(songs_added, max_songs, removed_count, playlist_id)
         f"Songs added: {songs_added}/{max_songs}\n"
         f"Old tracks removed (>=8 days old): {removed_count}\n"
         f"{status_text} {status_emoji}\n\n"
-        f"Playlist Link: {playlist_link}"
+        #f"Playlist Link: {playlist_link}"
     )
 
     api_key = os.environ.get("TEXTBELT_API_KEY")
@@ -619,10 +624,11 @@ def run_recommendation_script(access_token, refresh_token, phone_number):
 
     # Update artist data and generate playlist
     try:
-        new_artists, _ = update_artists_from_likes()
-        with open(ARTISTS_FILE, "r") as f:
-            artists_data = json.load(f)["artists"]
-        all_artists = {**artists_data, **new_artists}
+        user_profile = sp.current_user()
+        spotify_user_id = user_profile["id"]
+        time.sleep(.25)
+        artists_data = update_artists_from_likes_db(spotify_user_id, sp)
+        all_artists = artists_data
 
         recent_tracks = fetch_all_recent_tracks()
         artist_play_map = build_artist_play_map(recent_tracks)
@@ -657,6 +663,7 @@ def run_recommendation_script(access_token, refresh_token, phone_number):
                 continue
 
             sp.playlist_add_items(OUTPUT_PLAYLIST_ID, [track["id"]])
+            time.sleep(.1)
             existing_artist_ids.add(track["artists"][0]["id"])
             songs_added += 1
             print(f"[INFO] Added track '{track['name']}' by '{track['artists'][0]['name']}'")
